@@ -3,10 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
     CallToolRequestSchema,
     ErrorCode,
-    ListResourcesRequestSchema,
     ListToolsRequestSchema,
     McpError,
-    ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import axios, { AxiosResponse } from "axios";
 import dotenv from "dotenv";
@@ -95,7 +93,6 @@ const server = new Server(
     },{
         capabilities: {
             tools: {},
-            resources: {},
         },
     }
 );
@@ -562,79 +559,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 });
 
-// 资源列表处理器
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    return {
-        resources: [
-            {
-                uri: "dida365://tasks",
-                mimeType: "application/json",
-                name: "滴答清单任务",
-                description: "获取所有任务的概览",
-            },
-            {
-                uri: "dida365://projects",
-                mimeType: "application/json",
-                name: "滴答清单项目",
-                description: "获取所有项目的概览",
-            },
-        ],
-    };
-});
 
-// 资源读取处理器
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const uri = request.params.uri;
-
-    try {
-        switch (uri) {
-            case "dida365://tasks": {
-                const response: AxiosResponse<TaskListResponse> = await dida365Api.get("/task");
-                return {
-                    contents: [
-                        {
-                            uri,
-                            mimeType: "application/json",
-                            text: JSON.stringify(response.data, null, 2),
-                        },
-                    ],
-                };
-            }
-
-            case "dida365://projects": {
-                const response: AxiosResponse<ProjectListResponse> = await dida365Api.get("/project");
-                return {
-                    contents: [
-                        {
-                            uri,
-                            mimeType: "application/json",
-                            text: JSON.stringify(response.data, null, 2),
-                        },
-                    ],
-                };
-            }
-
-            default:
-                throw new McpError(
-                    ErrorCode.InvalidRequest,
-                    `未知资源URI: ${uri}`
-                );
-        }
-    } catch (error) {
-        if (axios.isAxiosError(error)) {
-            const status = error.response?.status;
-            const message = error.response?.data?.message || error.message;
-            throw new McpError(
-                ErrorCode.InternalError,
-                `滴答清单API调用失败 (${status}): ${message}`
-            );
-        }
-        throw new McpError(
-            ErrorCode.InternalError,
-            `资源获取失败: ${error instanceof Error ? error.message : String(error)}`
-        );
-    }
-});
 function throwValidError(projectId : string,taskId : string){
     if(!projectId&&!taskId) throw new McpError(ErrorCode.InvalidRequest,"projectId 和 taskId 为空")
     if(!projectId) throw new McpError(ErrorCode.InvalidRequest,"projectId 为空")
