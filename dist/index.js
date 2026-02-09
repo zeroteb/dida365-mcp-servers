@@ -6,12 +6,22 @@ import dotenv from "dotenv";
 // 加载环境变量
 dotenv.config();
 // 滴答清单API基础配置
-const DIDA365_BASE_URL = "https://api.dida365.com/open/v1";
+const DIDA365_BASE_URL = process.env.DIDA365_API_URL || "https://api.dida365.com/open/v1";
 const DIDA365_TOKEN = process.env.DIDA365_TOKEN;
+const DIDA365_COOKIE = process.env.COOKIE; // v2 API Cookie 认证
+const DIDA365_V2_BASE_URL = "https://api.ticktick.com/api/v2";
 if (!DIDA365_TOKEN) {
     console.error("Error: DIDA365_TOKEN not found in environment variables");
     process.exit(1);
 }
+// 创建 v2 API axios 实例 (Cookie 认证)
+const dida365ApiV2 = axios.create({
+    baseURL: DIDA365_V2_BASE_URL,
+    headers: {
+        "Content-Type": "application/json",
+        "Cookie": `t=${DIDA365_COOKIE}`,
+    },
+});
 // 创建axios实例
 const dida365Api = axios.create({
     baseURL: DIDA365_BASE_URL,
@@ -267,6 +277,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ["projectId"],
                 },
+            },
+            {
+                name: "get_tasks_by_date",
+                description: "Get tasks for a specific date from ALL projects (including Inbox). Useful for checking 'What is my plan for today'.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        date: {
+                            type: "string",
+                            description: "Target date in YYYY-MM-DD format (e.g. 2025-12-31). Matches tasks with this Due Date.",
+                        },
+                    },
+                    required: ["date"],
+                },
+            },
+            {
+                name: "get_focus_statistics",
+                description: "Get focus/pomodoro time statistics for a date range. Returns time spent on projects, tags, and tasks. Requires COOKIE env var for v2 API auth.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        startDate: {
+                            type: "string",
+                            description: "Start date in YYYYMMDD format (e.g. 20260201)",
+                        },
+                        endDate: {
+                            type: "string",
+                            description: "End date in YYYYMMDD format (e.g. 20260208)",
+                        },
+                    },
+                    required: ["startDate", "endDate"],
+                },
             }
         ],
     };
@@ -456,6 +498,123 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: `获取project成功: ${JSON.stringify(response.data, null, 2)}`
+                        }
+                    ]
+                };
+            }
+            case "get_tasks_by_date": {
+                const targetDate = args.date; // YYYY-MM-DD
+                if (!targetDate)
+                    throw new McpError(ErrorCode.InvalidRequest, "Date is required");
+                // 1. Get all projects
+                const projectsRes = await dida365Api.get("/project");
+                const projects = projectsRes.data.projects || [];
+                // 2. Add 'inbox' explicitly
+                const projectIds = projects.map((p) => p.id);
+                projectIds.push("inbox");
+                // 3. Fetch tasks for all projects concurrently
+                // Note: might need concurrency limit if projects are many, but usually fine for <20.
+                const tasksPromises = projectIds.map(async (pid) => {
+                    try {
+                        const res = await dida365Api.get(`/project/${pid}/data`);
+                        return res.data.tasks || [];
+                    }
+                    catch (e) {
+                        console.error(`Failed to fetch tasks for project ${pid}: ${e}`);
+                        return [];
+                    }
+                });
+                const results = await Promise.all(tasksPromises);
+                const allTasks = results.flat();
+                // 4. Filter by date
+                // TickTick dueDate is usually ISO string e.g., "2023-11-20T00:00:00.000+0000"
+                // We will do a simple comparison: check if the task's local time (or just the string) matches.
+                // Assuming targetDate is YYYY-MM-DD.
+                // 4. Filter by date logic
+                // We need to match tasks that:
+                // a) Have a specific dueDate that falls on targetDate (in local time)
+                // b) Have a startDate and dueDate, and targetDate is within [startDate, dueDate]
+                // Helper to normalize a date string to YYYY-MM-DD in local time
+                const toLocalYMD = (dateStr) => {
+                    try {
+                        const d = new Date(dateStr);
+                        if (isNaN(d.getTime()))
+                            return null;
+                        // Get local ISO date part: YYYY-MM-DD
+                        // Note: formatting to YYYY-MM-DD based on local system time
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    }
+                    catch {
+                        return null;
+                    }
+                };
+                const filteredTasks = allTasks.filter((t) => {
+                    // Normalize targetDate just in case, though we expect YYYY-MM-DD
+                    const target = targetDate;
+                    let startYMD = null;
+                    let dueYMD = null;
+                    if (t.startDate)
+                        startYMD = toLocalYMD(t.startDate);
+                    if (t.dueDate)
+                        dueYMD = toLocalYMD(t.dueDate);
+                    // Case 1: Simple Due Date Match
+                    // If no startDate, just check if dueDate matches target
+                    if (!startYMD && dueYMD === target)
+                        return true;
+                    // Case 2: Range Match
+                    // If both exist, check if target is between start and due (inclusive)
+                    if (startYMD && dueYMD) {
+                        return target >= startYMD && target <= dueYMD;
+                    }
+                    // Case 3: Start Date Match (Open ended? usually handled as just a start point)
+                    // If only startDate exists (rare for TickTick tasks to have start but no due, but possible)
+                    // We'll treat it as "starts on this day or active since then"? 
+                    // Usually TickTick shows it in "Today" if startDate <= Today.
+                    // But to be safe and specific to "Plan for Today", let's include it if it starts today 
+                    // OR if it started before and hasn't finished? 
+                    // Let's stick to: It appears on the calendar for Today.
+                    // If simple start date:
+                    if (startYMD === target)
+                        return true;
+                    // Case 4: Only Due Date match (covered by Case 1 logic but let's be explicit)
+                    if (!startYMD && dueYMD) {
+                        return dueYMD === target;
+                    }
+                    return false;
+                });
+                // Add sorting by priority (desc) and order
+                filteredTasks.sort((a, b) => {
+                    const pA = a.priority || 0;
+                    const pB = b.priority || 0;
+                    return pB - pA;
+                });
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Found ${filteredTasks.length} tasks for date ${targetDate}:\n${JSON.stringify(filteredTasks, null, 2)}`
+                        }
+                    ]
+                };
+            }
+            case "get_focus_statistics": {
+                const startDate = args.startDate;
+                const endDate = args.endDate;
+                if (!startDate || !endDate) {
+                    throw new McpError(ErrorCode.InvalidRequest, "startDate and endDate are required (YYYYMMDD format)");
+                }
+                if (!DIDA365_COOKIE) {
+                    throw new McpError(ErrorCode.InvalidRequest, "COOKIE environment variable is required for focus statistics (v2 API)");
+                }
+                const response = await dida365ApiV2.get(`/pomodoros/statistics/dist/${startDate}/${endDate}`);
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Focus statistics from ${startDate} to ${endDate}:\n${JSON.stringify(response.data, null, 2)}`
                         }
                     ]
                 };

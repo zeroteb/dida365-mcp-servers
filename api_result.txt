@@ -1,0 +1,81 @@
+﻿..✓✓✓✓....✓.M........✓M.✓✓M.✓✓MMM✓MMM✓M..✓.....✓..✓.✓....✓.
+
+======================================================================
+TickTick API v2 端点检测结果
+======================================================================
+
+
+🟢 已确认存在的 API 端点 (返回 401 需要认证)
+======================================================================
+
+【Focus/Pomo 专注相关】
+  /statistics/general            → 通用统计数据
+  /pomodoros                     → 🍅 番茄钟记录列表
+  /timer                         → 计时器状态
+
+【其他功能】
+  /user/profile                  → 获取用户资料信息
+  /user/preferences/settings     → 获取/设置用户偏好设置（时区等）
+  /user/status                   → 获取用户状态
+  /habits                        → 习惯列表
+  /habitCheckins                 → 习惯打卡记录
+  /habitRecords                  → 习惯记录
+  /task/all                      → 所有任务
+  /task/today                    → 今日任务
+  /projects                      → 项目列表
+  /tags                          → 标签列表
+  /calendar/bind                 → 绑定外部日历
+  /reminder                      → 单个提醒
+  /column                        → 看板列
+  /notification                  → 通知
+
+🟡 需要 POST/PUT/DELETE 方法 (返回 405)
+  /pomodoro
+  /habits/batch
+  /task
+  /batch/task
+  /batch/taskProject
+  /project
+  /project/all
+  /batch/project
+  /tag
+  /batch/tag
+
+======================================================================
+📊 统计
+======================================================================
+存在 (401): 17 个
+方法错误 (405): 10 个
+不存在 (404): 30 个
+
+======================================================================
+🍅 专注/番茄钟 API 使用说明
+======================================================================
+
+【获取番茄钟记录】
+  GET https://api.ticktick.com/api/v2/pomodoros
+  
+【获取专注记录】
+  GET https://api.ticktick.com/api/v2/focusRecords
+  
+【获取统计】
+  GET https://api.ticktick.com/api/v2/statistics/pomo
+  GET https://api.ticktick.com/api/v2/statistics/focus
+  
+【可能的开始/停止专注】
+  POST https://api.ticktick.com/api/v2/focus
+  Body: { taskId: "xxx", duration: 1500000 }  // 25分钟
+  
+【批量同步所有数据】
+  GET https://api.ticktick.com/api/v2/batch/check/0
+  返回: 项目、任务、标签、习惯等所有数据
+
+⚠️ 认证方式:
+  1. Cookie: t=<session_token>
+  2. 需要通过 POST /user/signin 登录获取 token
+  
+你现在的 Open API token (tp_xxx) 是 v1 API 的，
+v2 API 需要用户登录后的 session token。
+
+
+结果已保存到: api_v2_endpoints.txt
