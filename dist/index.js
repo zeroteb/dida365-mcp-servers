@@ -309,6 +309,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ["startDate", "endDate"],
                 },
+            },
+            {
+                name: "record_focus",
+                description: "Record a completed focus/pomodoro session. Use when user says: '记录一下刚才的专注', 'log my focus time', '我刚专注了xx分钟'. Creates a focus record with task, duration and timestamps.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        taskId: {
+                            type: "string",
+                            description: "ID of the task this focus session was for (optional)",
+                        },
+                        taskTitle: {
+                            type: "string",
+                            description: "Title of the task (required if taskId not provided)",
+                        },
+                        projectName: {
+                            type: "string",
+                            description: "Project name for the task (optional)",
+                        },
+                        tags: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Tags for the focus session (optional)",
+                        },
+                        durationMinutes: {
+                            type: "number",
+                            description: "Duration of focus in minutes (required)",
+                        },
+                        endTime: {
+                            type: "string",
+                            description: "End time in ISO 8601 format. Defaults to now if not provided.",
+                        },
+                        note: {
+                            type: "string",
+                            description: "Optional note for the focus session",
+                        },
+                    },
+                    required: ["durationMinutes"],
+                },
             }
         ],
     };
@@ -615,6 +654,62 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: `Focus statistics from ${startDate} to ${endDate}:\n${JSON.stringify(response.data, null, 2)}`
+                        }
+                    ]
+                };
+            }
+            case "record_focus": {
+                if (!DIDA365_COOKIE) {
+                    throw new McpError(ErrorCode.InvalidRequest, "COOKIE environment variable is required for recording focus (v2 API)");
+                }
+                const durationMinutes = args.durationMinutes;
+                if (!durationMinutes || durationMinutes <= 0) {
+                    throw new McpError(ErrorCode.InvalidRequest, "durationMinutes is required and must be positive");
+                }
+                // Calculate start and end times
+                const endTimeStr = args.endTime;
+                const endTime = endTimeStr ? new Date(endTimeStr) : new Date();
+                const startTime = new Date(endTime.getTime() - durationMinutes * 60 * 1000);
+                // Format times for API
+                const formatTime = (d) => d.toISOString().replace('Z', '+0000');
+                // Generate a unique ID
+                const generateId = () => {
+                    const hex = () => Math.floor(Math.random() * 16).toString(16);
+                    return Array.from({ length: 24 }, hex).join('');
+                };
+                const focusId = generateId();
+                const taskTitle = args.taskTitle || "Focus Session";
+                const tags = args.tags || [];
+                const projectName = args.projectName || "";
+                const note = args.note || "";
+                const taskId = args.taskId || "";
+                const payload = {
+                    add: [{
+                            startTime: formatTime(startTime),
+                            pauseDuration: 0,
+                            endTime: formatTime(endTime),
+                            status: 1,
+                            id: focusId,
+                            tasks: [{
+                                    taskId: taskId,
+                                    title: taskTitle,
+                                    tags: tags,
+                                    projectName: projectName,
+                                    startTime: formatTime(startTime),
+                                    endTime: formatTime(endTime)
+                                }],
+                            added: true,
+                            note: note
+                        }],
+                    update: [],
+                    delete: []
+                };
+                const response = await dida365ApiV2.post('/batch/pomodoro', payload);
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Focus session recorded!\nTask: ${taskTitle}\nDuration: ${durationMinutes} minutes\nStart: ${startTime.toLocaleString()}\nEnd: ${endTime.toLocaleString()}\n\nResponse: ${JSON.stringify(response.data, null, 2)}`
                         }
                     ]
                 };
