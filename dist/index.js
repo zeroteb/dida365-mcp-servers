@@ -294,7 +294,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "get_focus_statistics",
-                description: "Get focus/pomodoro time statistics for a date range. Returns time spent on projects, tags, and tasks. Requires COOKIE env var for v2 API auth.",
+                description: "Analyze time spent and productivity. Use when user asks: '这周花费时间怎么样', '时间都花在哪了', 'where did my time go', 'how can I improve efficiency'. Returns focus time breakdown by projects, tags and tasks.",
                 inputSchema: {
                     type: "object",
                     properties: {
