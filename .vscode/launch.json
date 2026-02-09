@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch MCP Server",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/src/index.ts",
+            "runtimeArgs": [
+                "-r",
+                "ts-node/register"
+            ],
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Built Server (dist)",
+            "program": "${workspaceFolder}/dist/index.js",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
