@@ -383,7 +383,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "record_focus",
-                description: "Record a completed focus/pomodoro session. Use when user says: '记录一下刚才的专注', 'log my focus time', '我刚专注了xx分钟'. Creates a focus record with task, duration and timestamps.",
+                description: "Record a completed focus/pomodoro session. Use when user says: '记录一下刚才的专注', 'log my focus time', '我刚专注了xx分钟'. IMPORTANT: Before recording, use get_tasks_by_date to find matching tasks from today, yesterday, and the past 2 days to get the correct taskId. Creates a focus record with task, duration and timestamps.",
                 inputSchema: {
                     type: "object",
                     properties: {
