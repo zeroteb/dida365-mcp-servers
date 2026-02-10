@@ -383,7 +383,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "record_focus",
-                description: "Record a completed focus/pomodoro session. Use when user says: '记录一下刚才的专注', 'log my focus time', '我刚专注了xx分钟'. IMPORTANT: Before recording, use get_tasks_by_date to find matching tasks from today, yesterday, and the past 2 days to get the correct taskId. Creates a focus record with task, duration and timestamps.",
+                description: "Record a completed focus/pomodoro session. Use when user says: '记录一下刚才的专注', 'log my focus time', '我刚专注了xx分钟'. IMPORTANT WORKFLOW: Before recording, you MUST first gather context by calling get_timers AND get_tasks_by_date (for today and past 2 days) in parallel. Then perform fuzzy matching — the user may say '阅读' but the timer might be called '读书' or 'Reading', so search for semantically similar names. Present the candidate matches (timers and tasks) to the user and ask them to confirm which one to use. Prefer timer matches for recurring/habitual activities, task matches for one-off items. Use the confirmed id as taskId. Do NOT record without checking timers and tasks first.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -419,6 +419,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ["durationMinutes"],
                 },
+            },
+            {
+                name: "get_timers",
+                description: "Get all focus timers (habitual/recurring activities) defined in Dida365. Timers represent activities the user regularly tracks time for (e.g., 'Reading', 'Exercise', 'Deep Work'). Use this tool to help identify what the user might be referring to when they mention an activity. Each timer has an id, title, and other metadata. The timer id can be used as taskId when recording focus sessions via record_focus.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+                required: [],
             }
         ],
     };
@@ -814,6 +823,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: `Focus session recorded!\nTask: ${taskTitle}\nDuration: ${durationMinutes} minutes\nStart: ${startTime.toLocaleString()}\nEnd: ${endTime.toLocaleString()}\n\nResponse: ${JSON.stringify(response.data, null, 2)}`
+                        }
+                    ]
+                };
+            }
+
+            case "get_timers": {
+                if (!DIDA365_COOKIE) {
+                    throw new McpError(ErrorCode.InvalidRequest, "COOKIE environment variable is required for fetching timers (v2 API)");
+                }
+
+                const response = await dida365ApiV2.get('/timer');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Timers:\n${JSON.stringify(response.data, null, 2)}`
                         }
                     ]
                 };
