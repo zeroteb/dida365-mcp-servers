@@ -428,6 +428,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {},
                 },
                 required: [],
+            },
+            {
+                name: "get_habits",
+                description: "Get all habits defined in Dida365. Habits are recurring activities the user wants to build or maintain (e.g., 'Drink Water', 'Meditate', 'Exercise'). Use this tool to check the user's habit list, which can also help identify what the user is referring to when recording focus or reviewing their routine. Each habit has an id, name, goal, frequency, and other metadata.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+                required: [],
             }
         ],
     };
@@ -840,6 +849,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: `Timers:\n${JSON.stringify(response.data, null, 2)}`
+                        }
+                    ]
+                };
+            }
+
+            case "get_habits": {
+                if (!DIDA365_COOKIE) {
+                    throw new McpError(ErrorCode.InvalidRequest, "COOKIE environment variable is required for fetching habits (v2 API)");
+                }
+
+                const response = await dida365ApiV2.get('/habits');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Habits:\n${JSON.stringify(response.data, null, 2)}`
                         }
                     ]
                 };
